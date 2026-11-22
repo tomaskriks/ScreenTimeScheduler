@@ -68,3 +68,8 @@ Then open http://localhost:5080. Without .NET, any static server works, e.g. `cd
 Fork the repo, then **Settings → Pages → Deploy from a branch → `main` → `/docs`**.
 After changing app files, raise the cache names at the top of `docs/sw.js` only if a file was renamed or removed;
 normal edits reach the phone the next time it opens the app online.
+
+## License
+
+[MIT](LICENSE): free to use, change and share, including your own copy. Cartoon titles and posters
+belong to their owners and are looked up live from TVmaze and Wikipedia; they are not part of this repo.
