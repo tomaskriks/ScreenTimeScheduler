@@ -5,6 +5,15 @@ import { AVATARS, load, save } from './store.js';
 const state = load();
 let activeKid = null;   // index of the kid who is choosing wishes right now
 const MAX_WISHES = 3;
+const MIN_KIDS = 2;
+const MAX_KIDS = 5;
+
+// 2 to 5 kids, whatever was saved.
+state.settings.kids = state.settings.kids.slice(0, MAX_KIDS);
+while (state.settings.kids.length < MIN_KIDS) {
+  const taken = state.settings.kids.map((k) => k.avatar);
+  state.settings.kids.push({ name: `Kid ${state.settings.kids.length + 1}`, avatar: AVATARS.find((a) => !taken.includes(a)) });
+}
 
 // Wishes are one list of cartoon ids per kid (older saves had a single id per kid).
 state.wishes = state.settings.kids.map((_, i) => {
@@ -79,6 +88,8 @@ function renderBar() {
 }
 
 function renderKids() {
+  // The row gets tighter with 4 or 5 kids (see .kids-row.n4 / .n5 in styles.css).
+  $('kidsRow').className = `kids-row n${state.settings.kids.length}`;
   $('kidsRow').innerHTML = state.settings.kids.map((kid, i) => {
     const slots = Array.from({ length: MAX_WISHES }, (_, n) => {
       const wish = cartoon(state.wishes[i][n]);
@@ -340,10 +351,33 @@ function renderSettings() {
       <span><input type="number" inputmode="numeric" min="0" max="60" value="${s.over}" data-setting="over"> min</span></label>
     <label class="setting">Shortest movie piece
       <span><input type="number" inputmode="numeric" min="5" max="120" value="${s.minPiece}" data-setting="minPiece"> min</span></label>
-    ${s.kids.map((kid, i) => `<div class="setting">
+    <h3 class="setting-head">Kids <small>${MIN_KIDS} to ${MAX_KIDS}</small></h3>
+    ${s.kids.map((kid, i) => `<div class="setting kid-setting k${i}">
       <button class="round" data-avatar="${i}" aria-label="Change picture">${kid.avatar}</button>
       <input type="text" maxlength="14" value="${esc(kid.name)}" data-kidname="${i}" aria-label="Name">
-    </div>`).join('')}`;
+      <button class="round small" data-removekid="${i}" aria-label="Remove ${esc(kid.name)}"
+        ${s.kids.length <= MIN_KIDS ? 'disabled' : ''}>✕</button>
+    </div>`).join('')}
+    ${s.kids.length < MAX_KIDS ? '<button class="pill add-kid" data-addkid>+ Add a kid</button>' : ''}`;
+}
+
+function addKid() {
+  const { kids } = state.settings;
+  if (kids.length >= MAX_KIDS) return;
+  const taken = kids.map((k) => k.avatar);
+  kids.push({ name: `Kid ${kids.length + 1}`, avatar: AVATARS.find((a) => !taken.includes(a)) });
+  state.wishes.push([]);
+  commit();
+}
+
+function removeKid(index) {
+  const { kids } = state.settings;
+  if (kids.length <= MIN_KIDS || !kids[index]) return;
+  if (!confirm(`Remove ${kids[index].name}?`)) return;
+  kids.splice(index, 1);
+  state.wishes.splice(index, 1);
+  activeKid = null;
+  commit();
 }
 
 $('back').addEventListener('click', () => showParents(false));
@@ -429,6 +463,9 @@ $('settings').addEventListener('change', (e) => {
 });
 
 $('settings').addEventListener('click', (e) => {
+  if (e.target.closest('[data-addkid]')) return void addKid();
+  const remove = e.target.closest('[data-removekid]');
+  if (remove) return void removeKid(Number(remove.dataset.removekid));
   const button = e.target.closest('[data-avatar]');
   if (!button) return;
   const kid = state.settings.kids[button.dataset.avatar];
