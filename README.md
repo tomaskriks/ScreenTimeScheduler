@@ -10,7 +10,8 @@ A small phone app that helps the kids agree on which cartoons fit into today's s
   less than the "Shortest movie piece" setting (10 minutes by default); a wish that cannot get
   that much is left out.
 - Hold the gear to open the parent screen: search and add cartoons, fix lengths, change the time and names.
-  Tap a cartoon's picture there to choose another poster (or just the first letter).
+  Tap a cartoon's picture there to choose another poster, a picture from the phone, or just the first letter.
+  Phone pictures are shrunk and saved on the phone, so they work offline too.
 
 ## How it is built
 
