@@ -46,7 +46,7 @@ function commit() {
 // (search results, pictures looked at in the picker but not chosen).
 function tellPosterCache() {
   if (!('serviceWorker' in navigator)) return;
-  const posters = state.cartoons.map((c) => c.image).filter(Boolean);
+  const posters = state.cartoons.map((c) => c.image).filter((url) => url && !url.startsWith('data:'));
   navigator.serviceWorker.ready
     .then((reg) => reg.active && reg.active.postMessage({ posters }))
     .catch(() => {});
@@ -256,17 +256,67 @@ function renderList() {
   }).join('') || '<p class="empty">Nothing here yet. Search above to add one.</p>';
 }
 
-// The strip of pictures under a cartoon: the letter, then every picture found.
+// The strip of pictures under a cartoon: the letter, a picture from the phone,
+// then every picture found online.
 function picker(c) {
-  if (picking.failed) return '<p class="picks-note">Could not reach the internet.</p>';
-  if (!picking.choices) return '<p class="picks-note">Looking for pictures…</p>';
   const letter = `<button class="pick${c.image ? '' : ' on'}" data-pick="-1" aria-label="Just the letter">
       ${picture({ title: c.title, image: '' })}</button>`;
-  const pics = picking.choices.map((url, i) => `<button class="pick${url === c.image ? ' on' : ''}" data-pick="${i}"
+  const upload = `<label class="pick upload" aria-label="Choose a picture from this phone">
+      <input type="file" accept="image/*" data-upload hidden><span>📷<br>From phone</span></label>`;
+  // While loading (or offline) the current picture is still shown, so it stays visible.
+  const choices = picking.choices || (c.image ? [c.image] : []);
+  const pics = choices.map((url, i) => `<button class="pick${url === c.image ? ' on' : ''}" data-pick="${i}"
       aria-label="Picture ${i + 1}">${picture({ title: c.title, image: url })}</button>`);
-  const note = picking.choices.filter((url) => url !== c.image).length
-    ? '' : '<p class="picks-note">No other pictures found.</p>';
-  return `<div class="picks">${letter}${pics.join('')}</div>${note}`;
+  let note = '';
+  if (picking.failed) note = 'Could not reach the internet. A picture from the phone still works.';
+  else if (!picking.choices) note = 'Looking for pictures…';
+  else if (!choices.some((url) => url !== c.image)) note = 'No other pictures found. Try one from the phone.';
+  return `<div class="picks">${letter}${upload}${pics.join('')}</div>${note ? `<p class="picks-note">${note}</p>` : ''}`;
+}
+
+// A picture from the phone, made small (it is saved on the phone with everything else)
+// and cropped to the tall card shape.
+const PHONE_PICTURE = { width: 320, height: 480 };
+async function shrinkPicture(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const { width, height } = PHONE_PICTURE;
+    const scale = Math.max(width / img.naturalWidth, height / img.naturalHeight);
+    const w = img.naturalWidth * scale;
+    const h = img.naturalHeight * scale;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext('2d').drawImage(img, (width - w) / 2, (height - h) / 2, w, h);
+    return canvas.toDataURL('image/jpeg', 0.8);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function usePhonePicture(file) {
+  const c = picking && cartoon(picking.id);
+  if (!c || !file) return;
+  let image;
+  try {
+    image = await shrinkPicture(file);
+  } catch {
+    toast('Could not open that picture');
+    return;
+  }
+  const before = c.image;
+  c.image = image;
+  if (!save(state)) {
+    c.image = before;
+    toast('The phone is out of room for pictures');
+    return;
+  }
+  picking = null;
+  commit();
+  toast('Picture changed');
 }
 
 async function openPicker(id) {
@@ -334,10 +384,11 @@ $('list').addEventListener('click', (e) => {
     return;
   }
   const pick = e.target.closest('[data-pick]');
-  if (pick && picking && picking.choices) {
+  if (pick && picking) {
     const c = cartoon(picking.id);
     const index = Number(pick.dataset.pick);
-    if (c) c.image = index < 0 ? '' : picking.choices[index] || c.image;
+    const choices = picking.choices || (c && c.image ? [c.image] : []);
+    if (c) c.image = index < 0 ? '' : choices[index] || c.image;
     picking = null;
     commit();
     toast('Picture changed');
@@ -354,6 +405,7 @@ $('list').addEventListener('click', (e) => {
 });
 
 $('list').addEventListener('change', (e) => {
+  if (e.target.matches('[data-upload]')) return void usePhonePicture(e.target.files[0]);
   const input = e.target.closest('[data-field]');
   if (!input) return;
   const c = cartoon(input.dataset.id);
