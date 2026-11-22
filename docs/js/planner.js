@@ -45,29 +45,36 @@ export function removeAt(plan, index, cartoon) {
 // is left out rather than squeezed in. Picked one at a time, preferring the cartoon that
 //   1. makes the most kids happy who have nothing in the plan yet,
 //   2. is wished by the most kids,
-//   3. is higher on their lists,
-//   4. is shorter.
-function choose(lists, lookup, max, minPiece) {
+//   3. is wished by the kid with the least luck lately (luck[kid] = share of their recent
+//      wishes that got in, 0..1; a kid with no record counts as 0.5),
+//   4. is higher on their lists,
+//   5. is shorter,
+//   6. and when still tied, by chance.
+function choose(lists, lookup, max, minPiece, luck, random) {
   const need = (id) => {
     const c = lookup(id);
     return c.type === 'movie' ? Math.min(minPiece, c.minutes) : c.minutes;
   };
   const fans = (id) => lists.flatMap((list, kid) => (list.includes(id) ? [kid] : []));
   const rank = (id) => Math.min(...lists.map((list) => list.indexOf(id)).filter((i) => i >= 0));
+  const luckOf = (kid) => (typeof luck[kid] === 'number' ? luck[kid] : 0.5);
+  const leastLuck = (id) => Math.min(...fans(id).map(luckOf));
 
   const chosen = [];
   const happy = new Set();
   let rest = [...new Set(lists.flat())];
+  const dice = new Map(rest.map((id) => [id, random()]));
   let reserved = 0;
   for (;;) {
     const fits = rest.filter((id) => reserved + need(id) <= max);
     if (!fits.length) break;
-    const score = (id) => [
-      fans(id).filter((kid) => !happy.has(kid)).length, fans(id).length, -rank(id), -need(id)];
+    const score = (id) => [fans(id).filter((kid) => !happy.has(kid)).length, fans(id).length,
+      -leastLuck(id), -rank(id), -need(id), dice.get(id)];
     const [pick] = fits.sort((a, b) => {
       const x = score(a);
       const y = score(b);
-      return y[0] - x[0] || y[1] - x[1] || y[2] - x[2] || y[3] - x[3];
+      for (let i = 0; i < x.length; i++) if (y[i] !== x[i]) return y[i] - x[i];
+      return 0;
     });
     chosen.push(pick);
     reserved += need(pick);
@@ -82,12 +89,16 @@ function choose(lists, lookup, max, minPiece) {
 // - series get whole episodes; the movies share the remaining time evenly, in 5-minute steps
 // - with no movies and every wish in, extra episodes are added while they bring the
 //   total closer to the budget
+// - the cartoons come in a random order (a series' episodes stay together), so the first
+//   kid's wish is not always first in the bar
+// options: luck = per kid, share of recent wishes that got in (see choose);
+//          random = for a fixed outcome in tests.
 // Returns { plan, left } where left = wished cartoons that did not fit.
-export function arrange(wishes, lookup, settings) {
+export function arrange(wishes, lookup, settings, { luck = [], random = Math.random } = {}) {
   const max = limit(settings);
   const lists = wishes.map((list) => list.filter((id) => lookup(id)));
   const minPiece = settings.minPiece || 10;
-  const { chosen, left } = choose(lists, lookup, max, minPiece);
+  const { chosen, left } = choose(lists, lookup, max, minPiece, luck, random);
 
   const series = chosen.filter((c) => c.type === 'series');
   const movies = chosen.filter((c) => c.type === 'movie');
@@ -117,9 +128,19 @@ export function arrange(wishes, lookup, settings) {
   }
 
   const plan = [];
-  for (const c of chosen) {
+  for (const c of shuffle(chosen, random)) {
     for (let i = 0; i < (episodes.get(c.id) || 0); i++) plan.push({ id: c.id, minutes: c.minutes });
     if (movieMinutes.has(c.id)) plan.push({ id: c.id, minutes: movieMinutes.get(c.id) });
   }
   return { plan, left };
+}
+
+// A shuffled copy (Fisher-Yates).
+function shuffle(items, random) {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
