@@ -100,7 +100,10 @@ const MAX_PICTURES = 12;
 
 // Same picture, different size or link style -> same key (the file name).
 function fileKey(url) {
-  const parts = decodeURIComponent(url.split('?')[0]).split('/');
+  if (url.startsWith('data:')) return url;   // a picture from the phone
+  let path = url.split('?')[0];
+  try { path = decodeURIComponent(path); } catch { /* keep as is */ }
+  const parts = path.split('/');
   const name = parts.filter((p) => !/^\d+px-/.test(p)).pop() || url;
   return name.replace(/ /g, '_').toLowerCase();
 }
@@ -130,7 +133,9 @@ async function seriesPictures(showId) {
 const commonsFile = (name) =>
   `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(name.replace(/ /g, '_'))}?width=400`;
 
-// Movies: the film poster on Wikidata, then the pictures on its Wikipedia page.
+// Movies: only the poster. Wikipedia keeps one poster per film; the other pictures
+// on a film's page are mostly photos of the voice actors, so they are left out.
+// Looked up again so the poster stays on offer after another picture was chosen.
 async function moviePictures(qid) {
   const lookup = new URLSearchParams({
     action: 'wbgetentities', format: 'json', origin: '*', ids: qid,
@@ -138,28 +143,22 @@ async function moviePictures(qid) {
   });
   const { entities = {} } = await getJson(`${WIKIDATA}?${lookup}`);
   const entity = entities[qid] || {};
-  const files = (prop) => ((entity.claims || {})[prop] || [])
+  const posters = ((entity.claims || {}).P3383 || [])   // P3383 = film poster (rare: most are not free)
     .map((c) => c.mainsnak.datavalue && c.mainsnak.datavalue.value)
-    .filter((v) => typeof v === 'string');
-  const posters = files('P3383').map(commonsFile);   // P3383 = film poster
-  const others = files('P18').map(commonsFile);      // P18 = image
+    .filter((v) => typeof v === 'string')
+    .map(commonsFile);
 
   const page = entity.sitelinks && entity.sitelinks.enwiki && entity.sitelinks.enwiki.title;
-  let onPage = [];
-  if (page) {
-    const query = new URLSearchParams({
-      action: 'query', format: 'json', origin: '*', titles: page, redirects: '1',
-      generator: 'images', gimlimit: '40',
-      prop: 'imageinfo', iiprop: 'url|mime', iiurlwidth: '400',
-    });
-    const found = await getJson(`${WIKIPEDIA}?${query}`);
-    onPage = Object.values((found.query && found.query.pages) || {})
-      .map((p) => p.imageinfo && p.imageinfo[0])
-      // Photos and scans only: drawings in SVG are almost always icons and logos.
-      .filter((info) => info && /^image\/(jpeg|png|webp)$/.test(info.mime))
-      .map((info) => info.thumburl || info.url);
-  }
-  return [...posters, ...onPage, ...others];
+  if (!page) return posters;
+  const query = new URLSearchParams({
+    action: 'query', format: 'json', origin: '*', titles: page, redirects: '1',
+    prop: 'pageimages', piprop: 'thumbnail', pithumbsize: '400', pilicense: 'any',
+  });
+  const found = await getJson(`${WIKIPEDIA}?${query}`);
+  const main = Object.values((found.query && found.query.pages) || {})
+    .map((p) => p.thumbnail && p.thumbnail.source)
+    .filter(Boolean);
+  return [...main, ...posters];
 }
 
 // Up to 12 picture links for a saved cartoon, its current picture first.

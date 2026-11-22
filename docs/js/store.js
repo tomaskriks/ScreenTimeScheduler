@@ -37,10 +37,13 @@ export function load() {
   return state;
 }
 
+// Returns false when it could not be saved (storage full or blocked):
+// the app still works for this visit.
 export function save(state) {
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
+    return true;
   } catch {
-    // Storage full or blocked: the app still works for this visit.
+    return false;
   }
 }
