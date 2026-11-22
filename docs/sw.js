@@ -1,6 +1,6 @@
 // Makes the app open without internet once it has been opened online.
 const SHELL = 'shell-v1';
-const POSTERS = 'posters-v1';
+const POSTERS = 'posters-v2';   // v2: drops broken posters saved by v1
 
 const FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
@@ -32,13 +32,30 @@ async function appFile(request) {
 }
 
 // Posters never change: saved copy first, network only the first time.
+// Images from other sites arrive "opaque" (status hidden), so those are kept too;
+// a visible error status is never kept, so a failed load is retried next time.
 async function poster(request) {
   const cache = await caches.open(POSTERS);
   const saved = await cache.match(request);
   if (saved) return saved;
-  const fresh = await fetch(request);
-  cache.put(request, fresh.clone());
-  return fresh;
+  try {
+    const fresh = await fetch(request);
+    if (fresh.ok || fresh.type === 'opaque') {
+      await cache.put(request, fresh.clone());
+      await trim(cache);
+    }
+    return fresh;
+  } catch {
+    // Offline and never saved: the page shows the first letter instead.
+    return Response.error();
+  }
+}
+
+// Keep only the newest posters; old ones are fetched again if still needed.
+const MAX_POSTERS = 60;
+async function trim(cache) {
+  const keys = await cache.keys();
+  await Promise.all(keys.slice(0, Math.max(0, keys.length - MAX_POSTERS)).map((k) => cache.delete(k)));
 }
 
 self.addEventListener('fetch', (event) => {
