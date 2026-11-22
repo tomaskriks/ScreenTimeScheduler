@@ -1,5 +1,5 @@
 import { add, arrange, canAdd, removeAt, total } from './planner.js';
-import { fetchStarters, search } from './catalog.js';
+import { fetchStarters, pictureChoices, search } from './catalog.js';
 import { AVATARS, load, save } from './store.js';
 
 const state = load();
@@ -39,6 +39,17 @@ function toast(message) {
 function commit() {
   save(state);
   render();
+  tellPosterCache();
+}
+
+// Tells the offline cache which posters are in use, so it can drop the rest
+// (search results, pictures looked at in the picker but not chosen).
+function tellPosterCache() {
+  if (!('serviceWorker' in navigator)) return;
+  const posters = state.cartoons.map((c) => c.image).filter(Boolean);
+  navigator.serviceWorker.ready
+    .then((reg) => reg.active && reg.active.postMessage({ posters }))
+    .catch(() => {});
 }
 
 // ---------- kids screen ----------
@@ -201,19 +212,25 @@ $('gear').addEventListener('contextmenu', (e) => e.preventDefault());
 // ---------- parent screen ----------
 
 let results = [];
+let picking = null;   // picture picker: { id, choices: [urls] or null while loading, failed }
 
 function showParents(show) {
   $('kids').hidden = show;
   $('parents').hidden = !show;
   activeKid = null;
+  picking = null;
   window.scrollTo(0, 0);
   render();
 }
 
-function row(c, controls) {
+function row(c, controls, pickable = false) {
   const kind = c.type === 'movie' ? `Movie · ${c.minutes} min` : 'Series';
+  const pic = pickable
+    ? `<button class="thumb-btn" data-pics="${esc(c.id)}" aria-label="Choose picture for ${esc(c.title)}"
+        aria-expanded="${Boolean(picking && picking.id === c.id)}">${picture(c, 'thumb')}<span class="edit">✎</span></button>`
+    : picture(c, 'thumb');
   return `<div class="row">
-    ${picture(c, 'thumb')}
+    ${pic}
     <div class="about"><b>${esc(c.title)}</b><small>${kind}${c.year ? ` · ${esc(c.year)}` : ''}</small></div>
     ${controls}
   </div>`;
@@ -234,8 +251,34 @@ function renderList() {
     return row(c, `<label class="num">${label} min
         <input type="number" inputmode="numeric" min="1" max="240" value="${c[field]}"
           data-id="${esc(c.id)}" data-field="${field}"></label>
-      <button class="round small" data-remove="${esc(c.id)}" aria-label="Remove ${esc(c.title)}">✕</button>`);
+      <button class="round small" data-remove="${esc(c.id)}" aria-label="Remove ${esc(c.title)}">✕</button>`, true)
+      + (picking && picking.id === c.id ? picker(c) : '');
   }).join('') || '<p class="empty">Nothing here yet. Search above to add one.</p>';
+}
+
+// The strip of pictures under a cartoon: the letter, then every picture found.
+function picker(c) {
+  if (picking.failed) return '<p class="picks-note">Could not reach the internet.</p>';
+  if (!picking.choices) return '<p class="picks-note">Looking for pictures…</p>';
+  const letter = `<button class="pick${c.image ? '' : ' on'}" data-pick="-1" aria-label="Just the letter">
+      ${picture({ title: c.title, image: '' })}</button>`;
+  const pics = picking.choices.map((url, i) => `<button class="pick${url === c.image ? ' on' : ''}" data-pick="${i}"
+      aria-label="Picture ${i + 1}">${picture({ title: c.title, image: url })}</button>`);
+  const note = picking.choices.filter((url) => url !== c.image).length
+    ? '' : '<p class="picks-note">No other pictures found.</p>';
+  return `<div class="picks">${letter}${pics.join('')}</div>${note}`;
+}
+
+async function openPicker(id) {
+  picking = { id, choices: null, failed: false };
+  render();
+  try {
+    const choices = await pictureChoices(cartoon(id));
+    if (picking && picking.id === id) picking.choices = choices;
+  } catch {
+    if (picking && picking.id === id) picking.failed = true;
+  }
+  render();
 }
 
 function renderSettings() {
@@ -279,6 +322,27 @@ $('results').addEventListener('click', (e) => {
 });
 
 $('list').addEventListener('click', (e) => {
+  const thumb = e.target.closest('[data-pics]');
+  if (thumb) {
+    const id = thumb.dataset.pics;
+    if (picking && picking.id === id) {
+      picking = null;
+      render();
+    } else {
+      openPicker(id);
+    }
+    return;
+  }
+  const pick = e.target.closest('[data-pick]');
+  if (pick && picking && picking.choices) {
+    const c = cartoon(picking.id);
+    const index = Number(pick.dataset.pick);
+    if (c) c.image = index < 0 ? '' : picking.choices[index] || c.image;
+    picking = null;
+    commit();
+    toast('Picture changed');
+    return;
+  }
   const button = e.target.closest('[data-remove]');
   if (!button) return;
   const id = button.dataset.remove;
@@ -356,6 +420,7 @@ async function seed() {
 
 render();
 if (!state.seeded) seed();
+tellPosterCache();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
