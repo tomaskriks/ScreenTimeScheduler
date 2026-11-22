@@ -51,11 +51,31 @@ async function poster(request) {
   }
 }
 
-// Keep only the newest posters; old ones are fetched again if still needed.
+// The app sends the posters its cartoons use (see tellPosterCache in app.js).
+// Anything else saved here (search results, pictures only looked at in the
+// picker) is dropped, so it never pushes a real poster out.
+let inUse = null;   // Set of poster links, or null until the app has said
+const href = (url) => { try { return new URL(url).href; } catch { return url; } };
+
+self.addEventListener('message', (event) => {
+  const list = event.data && event.data.posters;
+  if (!Array.isArray(list)) return;
+  inUse = new Set(list.map(href));
+  event.waitUntil(caches.open(POSTERS).then(async (cache) => {
+    const keys = await cache.keys();
+    await Promise.all(keys.filter((k) => !inUse.has(k.url)).map((k) => cache.delete(k)));
+  }));
+});
+
+// Never more than 60: the oldest unused go first; old ones are fetched again if still needed.
 const MAX_POSTERS = 60;
 async function trim(cache) {
   const keys = await cache.keys();
-  await Promise.all(keys.slice(0, Math.max(0, keys.length - MAX_POSTERS)).map((k) => cache.delete(k)));
+  const extra = keys.length - MAX_POSTERS;
+  if (extra <= 0) return;
+  const unused = keys.filter((k) => !inUse || !inUse.has(k.url));
+  const drop = [...unused, ...keys.filter((k) => !unused.includes(k))].slice(0, extra);
+  await Promise.all(drop.map((k) => cache.delete(k)));
 }
 
 self.addEventListener('fetch', (event) => {
