@@ -19,6 +19,9 @@ function defaults() {
     cartoons: [],
     plan: [],
     wishes: [[], [], []],   // per kid: wished cartoon ids, favourite first
+    // What Fill gave each kid lately, so the kids take turns when not everything fits.
+    // rounds: up to 5 earlier days, each [{ wished, got }] per kid.  last: the latest Fill.
+    luck: { rounds: [], last: null },
     seeded: false,
   };
 }

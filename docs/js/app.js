@@ -137,8 +137,37 @@ function renderCards() {
   }).join('');
 }
 
+// ---------- taking turns ----------
+// Every Fill notes how many of each kid's wishes got in. Fills within a few hours count
+// as one go (pressing Fill again replaces it); after that it joins the last 5 days.
+const SAME_GO_HOURS = 3;
+const ROUNDS_KEPT = 5;
+
+function luckSoFar() {
+  const record = state.luck;
+  if (record.last && Date.now() - record.last.at > SAME_GO_HOURS * 3600e3) {
+    record.rounds = [...record.rounds, record.last.kids].slice(-ROUNDS_KEPT);
+    record.last = null;
+  }
+  // Per kid: share of their wishes that got in over the remembered days (none -> no record).
+  return state.settings.kids.map((_, kid) => {
+    const days = record.rounds.map((round) => round[kid]).filter((day) => day && day.wished);
+    const wished = days.reduce((sum, day) => sum + day.wished, 0);
+    return wished ? days.reduce((sum, day) => sum + day.got, 0) / wished : undefined;
+  });
+}
+
+function noteLuck(plan) {
+  const inPlan = new Set(plan.map((item) => item.id));
+  state.luck.last = {
+    at: Date.now(),
+    kids: state.wishes.map((list) => ({ wished: list.length, got: list.filter((id) => inPlan.has(id)).length })),
+  };
+}
+
 function fillFromWishes() {
-  const { plan, left } = arrange(state.wishes, cartoon, state.settings);
+  const { plan, left } = arrange(state.wishes, cartoon, state.settings, { luck: luckSoFar() });
+  noteLuck(plan);
   state.plan = plan;
   activeKid = null;
   if (left.length) toast(`No room for ${left.map((c) => c.title).join(' and ')}`);
@@ -376,6 +405,7 @@ function removeKid(index) {
   if (!confirm(`Remove ${kids[index].name}?`)) return;
   kids.splice(index, 1);
   state.wishes.splice(index, 1);
+  for (const round of [...state.luck.rounds, ...(state.luck.last ? [state.luck.last.kids] : [])]) round.splice(index, 1);
   activeKid = null;
   commit();
 }

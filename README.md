@@ -24,6 +24,8 @@ into today's allowed minutes, and everybody can see that it's fair.
 - **Wishes first:** each kid taps their face, then up to 3 favourite cartoons.
 - **Then one tap: ✨ Fill the 40 minutes.** Every kid gets something if at all possible. Series get whole
   episodes, and movies share what's left in pieces (10 minutes or more), so a long movie is watched over a few days.
+  When not everything fits, **kids take turns**: the app remembers the last 5 days, and whoever has been
+  missing out gets the close calls. The order in the bar is shuffled too, so nobody is always first.
 - **Or plan by hand:** tap a picture to add an episode or a movie piece, and tap a block to take it out.
 - **Parents' corner:** hold the ⚙ gear (little fingers won't find it by accident). There you can:
   - search and add any series or movie,
