@@ -94,6 +94,81 @@ export async function search(query) {
   return (related.length ? related : all).sort((a, b) => exact(a) - exact(b));
 }
 
+// ---------- other pictures for a cartoon ----------
+
+const MAX_PICTURES = 12;
+
+// Same picture, different size or link style -> same key (the file name).
+function fileKey(url) {
+  const parts = decodeURIComponent(url.split('?')[0]).split('/');
+  const name = parts.filter((p) => !/^\d+px-/.test(p)).pop() || url;
+  return name.replace(/ /g, '_').toLowerCase();
+}
+
+function distinct(urls) {
+  const seen = new Set();
+  return urls.filter((url) => {
+    if (!url) return false;
+    const key = fileKey(url);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+// Series: TVmaze's image gallery. Posters first (they fit the tall cards), then the rest.
+async function seriesPictures(showId) {
+  const images = await getJson(`https://api.tvmaze.com/shows/${showId}/images`);
+  const rank = { poster: 0, background: 1, typography: 2 };
+  return images
+    .filter((img) => img.type in rank)
+    .sort((a, b) => rank[a.type] - rank[b.type] || Number(b.main) - Number(a.main))
+    .map((img) => (img.resolutions.medium || img.resolutions.original || {}).url);
+}
+
+// Commons file name -> a 400px-wide picture link.
+const commonsFile = (name) =>
+  `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(name.replace(/ /g, '_'))}?width=400`;
+
+// Movies: the film poster on Wikidata, then the pictures on its Wikipedia page.
+async function moviePictures(qid) {
+  const lookup = new URLSearchParams({
+    action: 'wbgetentities', format: 'json', origin: '*', ids: qid,
+    props: 'claims|sitelinks', sitefilter: 'enwiki',
+  });
+  const { entities = {} } = await getJson(`${WIKIDATA}?${lookup}`);
+  const entity = entities[qid] || {};
+  const files = (prop) => ((entity.claims || {})[prop] || [])
+    .map((c) => c.mainsnak.datavalue && c.mainsnak.datavalue.value)
+    .filter((v) => typeof v === 'string');
+  const posters = files('P3383').map(commonsFile);   // P3383 = film poster
+  const others = files('P18').map(commonsFile);      // P18 = image
+
+  const page = entity.sitelinks && entity.sitelinks.enwiki && entity.sitelinks.enwiki.title;
+  let onPage = [];
+  if (page) {
+    const query = new URLSearchParams({
+      action: 'query', format: 'json', origin: '*', titles: page, redirects: '1',
+      generator: 'images', gimlimit: '40',
+      prop: 'imageinfo', iiprop: 'url|mime', iiurlwidth: '400',
+    });
+    const found = await getJson(`${WIKIPEDIA}?${query}`);
+    onPage = Object.values((found.query && found.query.pages) || {})
+      .map((p) => p.imageinfo && p.imageinfo[0])
+      // Photos and scans only: drawings in SVG are almost always icons and logos.
+      .filter((info) => info && /^image\/(jpeg|png|webp)$/.test(info.mime))
+      .map((info) => info.thumburl || info.url);
+  }
+  return [...posters, ...onPage, ...others];
+}
+
+// Up to 12 picture links for a saved cartoon, its current picture first.
+export async function pictureChoices(cartoon) {
+  const [kind, id] = [cartoon.id.slice(0, 2), cartoon.id.slice(3)];
+  const found = kind === 'tv' ? await seriesPictures(id) : kind === 'wd' ? await moviePictures(id) : [];
+  return distinct([cartoon.image, ...found]).slice(0, MAX_PICTURES);
+}
+
 // The starting list, looked up on first run.
 const STARTERS = [
   { type: 'series', title: 'Blaze and the Monster Machines' },
