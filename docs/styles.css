@@ -9,6 +9,8 @@
   --kid0: #FF5D5D;
   --kid1: #2AA9E0;
   --kid2: #9B5DE5;
+  --kid3: #F3722C;
+  --kid4: #14A39A;
   --radius: 20px;
 }
 
@@ -91,7 +93,7 @@ h2 { font-size: 17px; margin: 0 0 10px; font-weight: 800; }
 
 .kids-row { display: flex; justify-content: space-around; gap: 8px; padding-top: 12px; }
 
-.kid { position: relative; display: grid; justify-items: center; gap: 2px; width: 30%; }
+.kid { position: relative; display: grid; justify-items: center; gap: 2px; flex: 1 1 0; min-width: 0; max-width: 30%; }
 .kid .face {
   width: 56px; height: 56px; border-radius: 50%;
   display: grid; place-items: center; font-size: 32px;
@@ -101,6 +103,18 @@ h2 { font-size: 17px; margin: 0 0 10px; font-weight: 800; }
 .kid.k0 { --kid: var(--kid0); }
 .kid.k1 { --kid: var(--kid1); }
 .kid.k2 { --kid: var(--kid2); }
+.kid.k3 { --kid: var(--kid3); }
+.kid.k4 { --kid: var(--kid4); }
+/* 4 or 5 kids: smaller faces and wish slots so the row still fits a phone. */
+.kids-row.n4, .kids-row.n5 { gap: 4px; justify-content: space-between; }
+.kids-row.n4 .kid .face { width: 50px; height: 50px; font-size: 28px; border-width: 4px; }
+.kids-row.n4 .kid .slot { width: 21px; height: 30px; }
+.kids-row.n4 .kid .slots { gap: 3px; }
+.kids-row.n5 .kid .face { width: 44px; height: 44px; font-size: 24px; border-width: 4px; }
+.kids-row.n5 .kid .slot { width: 17px; height: 25px; border-radius: 5px; }
+.kids-row.n5 .kid .slots { gap: 2px; }
+.kids-row.n5 .kid .name { font-size: 12px; }
+.kids-row.n5 .kid .slot .letter, .kids-row.n4 .kid .slot .letter { font-size: 10px; }
 .kid .name { font-size: 14px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kid.active .face { transform: scale(1.15); background: var(--kid); animation: pulse 1.1s infinite; }
 /* Three wish slots per kid: dashed while empty, a small poster once wished. */
@@ -221,3 +235,17 @@ input[type="number"] { width: 62px; text-align: center; }
   font-size: 13px; font-weight: 700;
 }
 .pick.upload span { font-size: 13px; }
+
+/* ---------- kids in settings ---------- */
+
+.setting-head { margin: 14px 0 0; font-size: 16px; display: flex; align-items: baseline; gap: 8px; }
+.setting-head small { color: var(--soft); font-size: 13px; font-weight: 600; }
+.kid-setting input { flex: 1; min-width: 0; }
+.kid-setting .round:first-child { box-shadow: 0 0 0 3px var(--kid); }
+.kid-setting.k0 { --kid: var(--kid0); }
+.kid-setting.k1 { --kid: var(--kid1); }
+.kid-setting.k2 { --kid: var(--kid2); }
+.kid-setting.k3 { --kid: var(--kid3); }
+.kid-setting.k4 { --kid: var(--kid4); }
+.kid-setting .round.small:disabled { opacity: .3; }
+.pill.add-kid { width: 100%; margin-top: 8px; background: var(--bg); border: 2px dashed var(--soft); color: var(--ink); }
